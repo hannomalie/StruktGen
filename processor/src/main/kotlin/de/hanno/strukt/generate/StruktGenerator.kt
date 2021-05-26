@@ -4,6 +4,7 @@ import com.google.devtools.ksp.getDeclaredProperties
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
 import de.hanno.strukt.generate.StruktGenerator.Type.Companion.parse
+import java.io.IOException
 import java.lang.IllegalStateException
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -49,58 +50,86 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
         return if(packageNameOrEmpty.isNotEmpty()) "default" else packageNameOrEmpty
     }
 
-    val propertyDeclarations = mutableMapOf<KSClassDeclaration, List<KSPropertyDeclaration>>()
+    val propertyDeclarationsPerClass = mutableMapOf<KSClassDeclaration, List<KSPropertyDeclaration>>()
     val visitor = FindPropertiesVisitor()
+    private var invoked = false
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
+        if (invoked) {
+            return emptyList()
+        }
+
         resolver.getAllFiles().toList().map {
             it.accept(visitor, Unit)
         }
 
-        propertyDeclarations.entries.forEach { (classDeclaration, propertyDeclarationsX) ->
+        propertyDeclarationsPerClass.forEach { (classDeclaration, propertyDeclarations) ->
 
             val interfaceName = classDeclaration.simpleName.asString()
             val implClassName = interfaceName + "Impl"
             val nonEmptyPackageName = nonEmptyPackageName(classDeclaration)
 
-            val propertyDeclarations = propertyDeclarationsX.toPropertyDeclarations(AtomicInteger())
+            val byteSizeCounter = AtomicInteger()
+            val propertyDeclarations = propertyDeclarations.toPropertyDeclarations(byteSizeCounter)
 
             codeGenerator.createNewFile(Dependencies.ALL_FILES, nonEmptyPackageName, implClassName, "kt").use { stream ->
-                stream.write(generateStruktImplementationCode(implClassName, interfaceName, propertyDeclarations))
+                try {
+                    val companionDeclaration = """    companion object { 
+                        |        val sizeInBytes = $byteSizeCounter 
+                        |        val $interfaceName.Companion.sizeInBytes get() = $byteSizeCounter
+                        |        val $interfaceName.sizeInBytes get() = $byteSizeCounter
+                        |        operator fun $interfaceName.Companion.invoke() = $implClassName()
+                        |    }
+                        |""".trimMargin()
+                    stream.write(generateStruktImplementationCode(implClassName, interfaceName, propertyDeclarations, companionDeclaration))
+                } catch (e: IOException) {
+                    logger.error("Cannot write to file $nonEmptyPackageName/$implClassName")
+                }
             }
         }
 
+        invoked = true
         return emptyList()
     }
 
     private fun generateStruktImplementationCode(
         implClassName: String,
         interfaceName: String,
-        propertyDeclarations: String
+        propertyDeclarations: String,
+        companionDeclaration: String
     ) = """
                     |class $implClassName: $interfaceName {
                     |$propertyDeclarations
+                    |$companionDeclaration
                     |}
                 """.trimMargin().toByteArray(Charsets.UTF_8)
 
     sealed class Type(val fqName: String) {
         abstract fun getterCallAsString(currentByteOffset: kotlin.Int): String
-        open fun getterDeclarationAsString(propertyName: String, currentByteOffset: AtomicInteger): String {
-            return """override val java.nio.ByteBuffer.$propertyName: $fqName get() { return ${getterCallAsString(currentByteOffset.get())} }"""
+        abstract fun setterCallAsString(currentByteOffset: kotlin.Int): String
+
+        open fun propertyDeclarationAsString(isMutable: kotlin.Boolean, propertyName: String, currentByteOffset: AtomicInteger): String {
+            return """override ${if(isMutable) "var" else "val"} java.nio.ByteBuffer.$propertyName: $fqName 
+                |   get() { return ${getterCallAsString(currentByteOffset.get())} }
+                |   ${if(isMutable) "set(value) { ${setterCallAsString(currentByteOffset.get())} }" else ""}""".trimMargin()
         }
 
         object Boolean: Type(kotlin.Boolean::class.qualifiedName!!) {
-            override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getInt($currentByteOffset) == 0"
+            override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getInt(position() + $currentByteOffset) == 1"
+            override fun setterCallAsString(currentByteOffset: kotlin.Int): String = "putInt(position() + $currentByteOffset, if(value) 1 else 0)"
         }
 
         object Int: Type(kotlin.Int::class.qualifiedName!!) {
-            override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getInt($currentByteOffset)"
+            override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getInt(position() + $currentByteOffset)"
+            override fun setterCallAsString(currentByteOffset: kotlin.Int): String = "putInt(position() + $currentByteOffset, value)"
         }
         object Float: Type(kotlin.Float::class.qualifiedName!!) {
-            override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getFloat($currentByteOffset)"
+            override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getFloat(position() + $currentByteOffset)"
+            override fun setterCallAsString(currentByteOffset: kotlin.Int): String = "putFloat(position() + $currentByteOffset, value)"
         }
         class Custom(val declaration: KSClassDeclaration): Type(declaration.qualifiedName!!.asString()) {
             override fun getterCallAsString(currentByteOffset: kotlin.Int): String = throw IllegalStateException("This should never get called, remove me later")
+            override fun setterCallAsString(currentByteOffset: kotlin.Int): String = throw IllegalStateException("This should never get called, remove me later")
 
             fun getCustomInstancesDeclarations(propertyName: String, currentByteOffset: AtomicInteger): String {
                 return """|    private val _${propertyName} = object: ${declaration.qualifiedName!!.asString()} {
@@ -108,7 +137,8 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                     |    }"""
             }
 
-            override fun getterDeclarationAsString(propertyName: String, currentByteOffset: AtomicInteger): String {
+            override fun propertyDeclarationAsString(isMutable: kotlin.Boolean, propertyName: String, currentByteOffset: AtomicInteger): String {
+                if(isMutable) throw IllegalStateException("var properties are not allowed for nested properties, as they don't make sense")
                 return """|
                     |    ${getCustomInstancesDeclarations(propertyName, currentByteOffset)}
                     |    override val java.nio.ByteBuffer.$propertyName: $fqName get() { return _${propertyName} }
@@ -121,13 +151,11 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
         companion object {
             fun KSDeclaration.parse(): Type? = if(this is KSClassDeclaration) parse() else null
 
-            fun KSClassDeclaration.parse(): Type? {
-                return when(qualifiedName!!.asString()) {
-                    kotlin.Boolean::class.qualifiedName!!.toString() -> Boolean
-                    kotlin.Int::class.qualifiedName!!.toString() -> Int
-                    kotlin.Float::class.qualifiedName!!.toString() -> Float
-                    else -> if(this.isStrukt) Custom(this) else null
-                }
+            fun KSClassDeclaration.parse(): Type? = when(qualifiedName!!.asString()) {
+                kotlin.Boolean::class.qualifiedName!!.toString() -> Boolean
+                kotlin.Int::class.qualifiedName!!.toString() -> Int
+                kotlin.Float::class.qualifiedName!!.toString() -> Float
+                else -> if(this.isStrukt) Custom(this) else null
             }
         }
     }
@@ -137,7 +165,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
 
         override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
             if(classDeclaration.classKind == ClassKind.INTERFACE && classDeclaration.annotations.any { it.shortName.asString() == "Strukt" }) {
-                propertyDeclarations[classDeclaration] = classDeclaration.findPropertyDeclarations()
+                propertyDeclarationsPerClass[classDeclaration] = classDeclaration.findPropertyDeclarations()
             }
         }
 
@@ -177,7 +205,7 @@ private fun List<KSPropertyDeclaration>.toPropertyDeclarations(currentByteOffset
         val type = declaration.type.resolve().declaration.parse()
 
         type?.let { type ->
-            "\t" + type.getterDeclarationAsString(declaration.simpleName.asString(), currentByteOffset).apply {
+            "\t" + type.propertyDeclarationAsString(declaration.isMutable, declaration.simpleName.asString(), currentByteOffset).apply {
                 currentByteOffset.getAndAdd(type.sizeInBytes)
             }
         } ?: ""

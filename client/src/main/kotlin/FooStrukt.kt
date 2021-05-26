@@ -6,19 +6,22 @@ annotation class Strukt
 interface Simple {
     val ByteBuffer.a: Int
     val ByteBuffer.b: Float
+    companion object
 }
 
 @Strukt
 interface Nested {
-    val ByteBuffer.a: Int
+    var ByteBuffer.a: Int
     val ByteBuffer.b: Int
+    companion object
 }
 
 @Strukt
 interface FooStrukt {
     val ByteBuffer.a: Int
-    val ByteBuffer.b: Int
+    var ByteBuffer.b: Int
     val ByteBuffer.c: Float
     val ByteBuffer.d: Nested
-    val ByteBuffer.e: Boolean
+    var ByteBuffer.e: Boolean
+    companion object
 }
