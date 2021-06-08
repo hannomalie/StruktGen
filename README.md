@@ -151,26 +151,30 @@ the implementation has.
 It can be flawed, incomplete and may not tell an answer to what I ask.
 The benchmark code can be found in the client module.
 
-Benchmark                                          Mode  Cnt        Score        Error   Units
-StruktBenchmark.getPropertyStrukt                 thrpt    6  1058553,783 ±  72221,056  ops/ms
-StruktBenchmark.getPropertyVanilla                thrpt    6  1400918,070 ± 115561,885  ops/ms
+| Benchmark        | Mode           | Units  |
+| ------------- |:-------------:| -----:|
+| StruktBenchmark.getPropertyStrukt      | 1058553,783 | ops/ms |
+| StruktBenchmark.getPropertyVanilla      | 1400918,070 | ops/ms |
+
 
 This benchmark shows difference between reading properties from a direct buffer and regular properties
 on an instance that just return some static primitive data.
 It can be seen that read access to Struct objects has a performance penalty, compared to classic heap objects,
 which could be seen as expected.
 
-Benchmark                                          Mode  Cnt        Score        Error   Units
-StruktBenchmark.setPropertyStrukt                 thrpt    6   822914,029 ± 138184,888  ops/ms
-StruktBenchmark.setPropertyVanilla                thrpt    6  1308137,271 ± 181451,114  ops/ms
+| Benchmark        | Mode           | Units  |
+| ------------- |:-------------:| -----:|
+| StruktBenchmark.setPropertyStrukt      | 822914,029 | ops/ms |
+| StruktBenchmark.setPropertyVanilla      | 1308137,271 | ops/ms |
 
 Some as above, but for write access.
 It can be seen that there is also a performance penalty for writing to a direct buffer instead of accessing heap data,
 which could also be seen as expected.
 
-Benchmark                                          Mode  Cnt        Score        Error   Units
-StruktBenchmark.iterate_getPropertyStrukt         thrpt    6     1180,447 ±     84,828  ops/ms
-StruktBenchmark.iterateindexed_getPropertyStrukt  thrpt    6     1061,277 ±    125,846  ops/ms
+| Benchmark        | Mode           | Units  |
+| ------------- |:-------------:| -----:|
+| StruktBenchmark.iterate_getPropertyStrukt      | 1180,447 | ops/ms |
+| StruktBenchmark.iterateindexed_getPropertyStrukt      | 1061,277 | ops/ms |
 
 These two benchmarks iterate over a buffer with 1000 instances of a struct.
 
