@@ -1,3 +1,5 @@
+import FooStruktImpl.Companion.forEach
+import FooStruktImpl.Companion.forEachIndexed
 import FooStruktImpl.Companion.invoke
 import FooStruktImpl.Companion.sizeInBytes
 import NestedImpl.Companion.invoke
@@ -95,7 +97,7 @@ class FooStruktTest {
     }
 
     @Test
-    fun `strukt properties can be set correctly through instance when iterating`() {
+    fun `strukt properties can be set correctly through instance when manually iterating`() {
         val simple = FooStrukt()
         val arraySize = 10
         val buffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * arraySize)
@@ -119,5 +121,56 @@ class FooStruktTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun `strukt properties can be set correctly through instance when iterating`() {
+        val arraySize = 10
+        val buffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * arraySize)
+
+        var counter = 0
+        buffer.forEach { simple ->
+            simple.run {
+                assertThat(b).isEqualTo(0)
+                b = counter
+                assertThat(b).isEqualTo(counter)
+
+                assertThat(e).isFalse()
+                e = true
+                assertThat(e).isTrue()
+
+                assertThat(d.run { a }).isEqualTo(0)
+                d.run { a = counter }
+                assertThat(d.run { a }).isEqualTo(counter)
+            }
+            counter++
+        }
+        assertThat(counter).isEqualTo(10)
+    }
+    @Test
+    fun `strukt properties can be set correctly through instance when iterating with index`() {
+        val arraySize = 10
+        val buffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * arraySize)
+
+        var counter = 0
+        buffer.forEachIndexed { index, simple ->
+
+            simple.run {
+                assertThat(b).isEqualTo(0)
+                b = index
+                assertThat(b).isEqualTo(index)
+
+                assertThat(e).isFalse()
+                e = true
+                assertThat(e).isTrue()
+
+                assertThat(d.run { a }).isEqualTo(0)
+                d.run { a = index }
+                assertThat(d.run { a }).isEqualTo(index)
+            }
+            counter++
+        }
+
+        assertThat(counter).isEqualTo(10)
     }
 }

@@ -2,6 +2,9 @@ package foo
 
 import FooStrukt
 import FooStruktImpl
+import FooStruktImpl.Companion.forEach
+import FooStruktImpl.Companion.forEachIndexed
+import FooStruktImpl.Companion.sizeInBytes
 import Nested
 import org.openjdk.jmh.annotations.*
 import org.openjdk.jmh.infra.Blackhole
@@ -9,6 +12,8 @@ import org.openjdk.jmh.runner.Runner
 import org.openjdk.jmh.runner.options.OptionsBuilder
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
+
+val iterationCount = 1000
 
 /**
  * Created by tony on 2018-12-10.
@@ -25,16 +30,20 @@ import java.util.concurrent.TimeUnit
 @OutputTimeUnit(TimeUnit.MILLISECONDS) // Time type of benchmark results
 open class StruktBenchmark {
 
-    @State(Scope.Benchmark)
+    @State(Scope.Thread)
     open class SimpleState(
         val strukt: StruktImpl = StruktImpl(),
         val buffer: ByteBuffer = ByteBuffer.allocateDirect(FooStruktImpl.sizeInBytes)
     )
-
-    @State(Scope.Benchmark)
+    @State(Scope.Thread)
     open class StruktState(
         val strukt: FooStruktImpl = FooStruktImpl(),
         val buffer: ByteBuffer = ByteBuffer.allocateDirect(FooStruktImpl.sizeInBytes)
+    )
+
+    @State(Scope.Thread)
+    open class IterationStruktState(
+        val buffer: ByteBuffer = ByteBuffer.allocateDirect(FooStrukt.sizeInBytes * iterationCount)
     )
 
 
@@ -73,12 +82,26 @@ open class StruktBenchmark {
         blackHole.consume(b)
         return b
     }
-
     @Benchmark
     fun getPropertyStrukt(blackHole: Blackhole, state: StruktState): Int {
         val b = state.buffer.run { state.strukt.run { b } }
         blackHole.consume(b)
         return b
+    }
+
+    @Benchmark
+    fun iterate_getPropertyStrukt(blackHole: Blackhole, state: IterationStruktState) {
+        state.buffer.forEach { strukt ->
+            val b = strukt.run { b }
+            blackHole.consume(b)
+        }
+    }
+    @Benchmark
+    fun iterateindexed_getPropertyStrukt(blackHole: Blackhole, state: IterationStruktState) {
+        state.buffer.forEachIndexed { index, strukt ->
+            val b = strukt.run { b }
+            blackHole.consume(b)
+        }
     }
 
     @Benchmark

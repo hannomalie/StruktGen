@@ -79,6 +79,26 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                         |        val $interfaceName.Companion.sizeInBytes get() = $byteSizeCounter
                         |        val $interfaceName.sizeInBytes get() = $byteSizeCounter
                         |        operator fun $interfaceName.Companion.invoke() = $implClassName()
+                        |        
+                        |        @PublishedApi internal val _slidingWindow = $implClassName()
+                        |        inline fun java.nio.ByteBuffer.forEach(block: java.nio.ByteBuffer.($interfaceName) -> Unit) { 
+                        |           position(0)
+                        |           while(position() + sizeInBytes <= capacity()) {
+                        |               block(_slidingWindow)
+                        |               position(position() + sizeInBytes)
+                        |           }
+                        |           position(0)
+                        |        }
+                        |        inline fun java.nio.ByteBuffer.forEachIndexed(block: java.nio.ByteBuffer.(kotlin.Int, $interfaceName) -> Unit) { 
+                        |           position(0)
+                        |           var counter = 0
+                        |           while(position() + sizeInBytes <= capacity()) {
+                        |               block(counter, _slidingWindow)
+                        |               counter++
+                        |               position(counter * sizeInBytes)
+                        |           }
+                        |           position(0)
+                        |        }
                         |    }
                         |""".trimMargin()
                     stream.write(generateStruktImplementationCode(implClassName, interfaceName, propertyDeclarations, companionDeclaration))
