@@ -2,6 +2,7 @@ import FooStruktImpl.Companion.forEach
 import FooStruktImpl.Companion.forEachIndexed
 import FooStruktImpl.Companion.invoke
 import FooStruktImpl.Companion.sizeInBytes
+import FooStruktImpl.Companion.type
 import NestedImpl.Companion.invoke
 import SimpleImpl.Companion.invoke
 import org.assertj.core.api.Assertions.assertThat
@@ -172,5 +173,44 @@ class FooStruktTest {
         }
 
         assertThat(counter).isEqualTo(10)
+    }
+
+    @Test
+    fun `typed buffer iteration works`() {
+        val buffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * 10)
+        val typedBuffer = TypedBuffer(buffer, FooStrukt.type)
+
+        typedBuffer.forEach {
+            it.run {
+                assertThat(b).isEqualTo(0)
+                b = 1
+                assertThat(b).isEqualTo(1)
+            }
+        }
+    }
+    @Test
+    fun `typed buffer iteration with index works`() {
+        val typedBuffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * 10).typed(FooStrukt.type)
+
+        typedBuffer.forEachIndexed { index, it ->
+            it.run {
+                assertThat(b).isEqualTo(0)
+                b = index
+                assertThat(b).isEqualTo(index)
+            }
+        }
+    }
+
+    @Test
+    fun `typed buffer index access works`() {
+        val typedBuffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * 10).typed(FooStrukt.type)
+
+        typedBuffer[0] {
+            it.run {
+                assertThat(b).isEqualTo(0)
+                b = 5
+                assertThat(b).isEqualTo(5)
+            }
+        }
     }
 }

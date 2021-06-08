@@ -63,6 +63,50 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             it.accept(visitor, Unit)
         }
 
+        codeGenerator.createNewFile(Dependencies.ALL_FILES, "default", "default", "kt").use { stream ->
+            stream.write("""
+                |interface StructType<T> {
+                |    val sizeInBytes: Int 
+                |    val factory: () -> T
+                |}
+                |
+                |@JvmInline
+                |value class Invokable<T>(val buffer: TypedBuffer<T>) {
+                |    operator fun invoke(block: java.nio.ByteBuffer.(T) -> Unit) {
+                |       buffer.byteBuffer.block(buffer._slidingWindow)
+                |   }
+                |}
+                |
+                |fun <T> java.nio.ByteBuffer.typed(structType: StructType<T>) = TypedBuffer(this, structType)
+                |
+                |data class TypedBuffer<T>(val byteBuffer: java.nio.ByteBuffer, val structType: StructType<T>) {
+                |    @PublishedApi internal val _slidingWindow = structType.factory()
+                |    inline fun forEach(block: java.nio.ByteBuffer.(T) -> Unit) {
+                |       byteBuffer.position(0)
+                |       while(byteBuffer.position() + structType.sizeInBytes <= byteBuffer.capacity()) {
+                |           byteBuffer.block(_slidingWindow)
+                |           byteBuffer.position(byteBuffer.position() + structType.sizeInBytes)
+                |       }
+                |       byteBuffer.position(0)
+                |    }
+                |    
+                |    inline fun forEachIndexed(block: java.nio.ByteBuffer.(Int, T) -> Unit) {
+                |       byteBuffer.position(0)
+                |       var counter = 0
+                |       while(byteBuffer.position() + structType.sizeInBytes <= byteBuffer.capacity()) {
+                |           byteBuffer.block(counter, _slidingWindow)
+                |           counter++
+                |           byteBuffer.position(counter * structType.sizeInBytes)
+                |       }
+                |       byteBuffer.position(0)
+                |    }
+                |    inline operator fun get(index: Int): Invokable<T> {
+                |        byteBuffer.position(index * structType.sizeInBytes)
+                |        return Invokable(this)
+                |    }
+                |}
+            """.trimMargin().toByteArray(Charsets.UTF_8))
+        }
         propertyDeclarationsPerClass.forEach { (classDeclaration, propertyDeclarations) ->
 
             val interfaceName = classDeclaration.simpleName.asString()
@@ -74,11 +118,13 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
 
             codeGenerator.createNewFile(Dependencies.ALL_FILES, nonEmptyPackageName, implClassName, "kt").use { stream ->
                 try {
-                    val companionDeclaration = """    companion object { 
-                        |        val sizeInBytes = $byteSizeCounter 
+                    val companionDeclaration = """    companion object: StructType<$interfaceName> { 
+                        |        override val sizeInBytes = $byteSizeCounter 
                         |        val $interfaceName.Companion.sizeInBytes get() = $byteSizeCounter
+                        |        val $interfaceName.Companion.type: StructType<$interfaceName> get() = this@Companion
                         |        val $interfaceName.sizeInBytes get() = $byteSizeCounter
                         |        operator fun $interfaceName.Companion.invoke() = $implClassName()
+                        |        override val factory = { $implClassName() }
                         |        
                         |        @PublishedApi internal val _slidingWindow = $implClassName()
                         |        inline fun java.nio.ByteBuffer.forEach(block: java.nio.ByteBuffer.($interfaceName) -> Unit) { 
