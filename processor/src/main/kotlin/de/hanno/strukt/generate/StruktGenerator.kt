@@ -65,7 +65,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
 
         codeGenerator.createNewFile(Dependencies.ALL_FILES, "default", "default", "kt").use { stream ->
             stream.write("""
-                |interface StructType<T> {
+                |interface StruktType<T> {
                 |    val sizeInBytes: Int 
                 |    val factory: () -> T
                 |}
@@ -77,15 +77,15 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 |   }
                 |}
                 |
-                |fun <T> java.nio.ByteBuffer.typed(structType: StructType<T>) = TypedBuffer(this, structType)
+                |fun <T> java.nio.ByteBuffer.typed(struktType: StruktType<T>) = TypedBuffer(this, struktType)
                 |
-                |data class TypedBuffer<T>(val byteBuffer: java.nio.ByteBuffer, val structType: StructType<T>) {
-                |    @PublishedApi internal val _slidingWindow = structType.factory()
+                |data class TypedBuffer<T>(val byteBuffer: java.nio.ByteBuffer, val struktType: StruktType<T>) {
+                |    @PublishedApi internal val _slidingWindow = struktType.factory()
                 |    inline fun forEach(block: java.nio.ByteBuffer.(T) -> Unit) {
                 |       byteBuffer.position(0)
-                |       while(byteBuffer.position() + structType.sizeInBytes <= byteBuffer.capacity()) {
+                |       while(byteBuffer.position() + struktType.sizeInBytes <= byteBuffer.capacity()) {
                 |           byteBuffer.block(_slidingWindow)
-                |           byteBuffer.position(byteBuffer.position() + structType.sizeInBytes)
+                |           byteBuffer.position(byteBuffer.position() + struktType.sizeInBytes)
                 |       }
                 |       byteBuffer.position(0)
                 |    }
@@ -93,15 +93,15 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 |    inline fun forEachIndexed(block: java.nio.ByteBuffer.(Int, T) -> Unit) {
                 |       byteBuffer.position(0)
                 |       var counter = 0
-                |       while(byteBuffer.position() + structType.sizeInBytes <= byteBuffer.capacity()) {
+                |       while(byteBuffer.position() + struktType.sizeInBytes <= byteBuffer.capacity()) {
                 |           byteBuffer.block(counter, _slidingWindow)
                 |           counter++
-                |           byteBuffer.position(counter * structType.sizeInBytes)
+                |           byteBuffer.position(counter * struktType.sizeInBytes)
                 |       }
                 |       byteBuffer.position(0)
                 |    }
                 |    inline operator fun get(index: Int): Invokable<T> {
-                |        byteBuffer.position(index * structType.sizeInBytes)
+                |        byteBuffer.position(index * struktType.sizeInBytes)
                 |        return Invokable(this)
                 |    }
                 |}
@@ -118,10 +118,10 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
 
             codeGenerator.createNewFile(Dependencies.ALL_FILES, nonEmptyPackageName, implClassName, "kt").use { stream ->
                 try {
-                    val companionDeclaration = """    companion object: StructType<$interfaceName> { 
+                    val companionDeclaration = """    companion object: StruktType<$interfaceName> { 
                         |        override val sizeInBytes = $byteSizeCounter 
                         |        val $interfaceName.Companion.sizeInBytes get() = $byteSizeCounter
-                        |        val $interfaceName.Companion.type: StructType<$interfaceName> get() = this@Companion
+                        |        val $interfaceName.Companion.type: StruktType<$interfaceName> get() = this@Companion
                         |        val $interfaceName.sizeInBytes get() = $byteSizeCounter
                         |        operator fun $interfaceName.Companion.invoke() = $implClassName()
                         |        override val factory = { $implClassName() }

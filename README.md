@@ -81,6 +81,48 @@ to keep track of the current position.
 With my new implementation, the backing buffer is a dependency of all struct properties - it needs to contain the current buffer offset
 already, because it is the only dependency I have, and the only one I want to urge my user to provide.
 
+### StruktType<T>
+
+Sadly, Kotlin doesn't have type classes, so it's not easily possible to abstract over static properties of a type.
+Nonetheless, I added an interface StruktType<T> that implements things like sizeInBytes or a factory.
+The companion objects of a strukt implementation implement the interface and define an extension property _type_
+on the companion of the strukt interface's companion.
+
+### TypedBuffer<T>
+
+```kotlin
+val typedBuffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * 10).typed(FooStrukt.type) // StruktType in action
+
+typedBuffer.forEachIndexed { index, it ->
+    it.run {
+        assertThat(b).isEqualTo(0)
+        b = index
+        assertThat(b).isEqualTo(index)
+    }
+}
+```
+A typed buffer is handy when you don't want to pass around naked ByteBuffer instances, as you
+might often have buffers that are only used as storage for a single strukt type.
+Iteration functions are implemented directly on the typed buffer class, so you can't accidentally import
+a wrong one from a companion.
+
+#### index access into a typed buffer
+Using index access on a typed buffer might be easy, but as the returned instance is just a shared sliding window,
+one might forget about the backing buffer and the state it keeps (the position), so it's best to
+not assign instances at all, but just use them in place.
+I created some (not yet optimized) syntax that lets you index into a typed buffer, passing a lambda,
+and immediately have the buffer as a receiver.
+
+```kotlin
+typedBuffer[0] {
+    it.run {
+        assertThat(b).isEqualTo(0)
+        b = 5
+        assertThat(b).isEqualTo(5)
+    }
+}
+```
+
 ### More details
 For the given example, the processor generates the following code, just formatted a little bit uglier
 ```kotlin
