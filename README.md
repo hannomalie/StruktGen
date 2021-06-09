@@ -153,28 +153,36 @@ The benchmark code can be found in the client module.
 
 | Benchmark        | Mode           | Units  |
 | ------------- |:-------------:| -----:|
-| StruktBenchmark.getPropertyStrukt      | 1058553,783 | ops/ms |
-| StruktBenchmark.getPropertyVanilla      | 1400918,070 | ops/ms |
-
+| StruktBenchmark.getPropertyStrukt      | 1019144,783 | ops/ms |
+| StruktBenchmark.getPropertyVanilla      | 1336160,070 | ops/ms |
+| StruktBenchmark.unsafe_getPropertyStrukt      | 985404,194 | ops/ms |
 
 This benchmark shows difference between reading properties from a direct buffer and regular properties
 on an instance that just return some static primitive data.
 It can be seen that read access to Struct objects has a performance penalty, compared to classic heap objects,
 which could be seen as expected.
+Using UNSAFE doesn't make a noticeable difference.
 
 | Benchmark        | Mode           | Units  |
 | ------------- |:-------------:| -----:|
 | StruktBenchmark.setPropertyStrukt      | 822914,029 | ops/ms |
 | StruktBenchmark.setPropertyVanilla      | 1308137,271 | ops/ms |
+| StruktBenchmark.unsafe_setPropertyStrukt      | 843925,271 | ops/ms |
 
 Some as above, but for write access.
 It can be seen that there is also a performance penalty for writing to a direct buffer instead of accessing heap data,
 which could also be seen as expected.
+Using UNSAFE doesn't make a noticeable difference.
 
 | Benchmark        | Mode           | Units  |
 | ------------- |:-------------:| -----:|
 | StruktBenchmark.iterate_getPropertyStrukt      | 1180,447 | ops/ms |
+| StruktBenchmark.iterate_getPropertyVanilla        | 1287,677 | ops/ms
 | StruktBenchmark.iterateindexed_getPropertyStrukt      | 1061,277 | ops/ms |
+| StruktBenchmark.unsafe_iterate_getPropertyStrukt  | 1247,887 | ops/ms
 
-These two benchmarks iterate over a buffer with 1000 instances of a struct.
+These benchmarks iterate over a buffer with 1000 instances of a struct, or in case of the vanilla one,
+iterate an ArrayList of 1000 instances.
+It's very interesting how small the difference between buffer and regular heap access already is.
+With direct buffers using UNSAFE, the gap is even closer.
 
