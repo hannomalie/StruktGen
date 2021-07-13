@@ -6,5 +6,6 @@ pluginManagement {
 }
 
 rootProject.name = "StruktGen"
+include("api")
 include("processor")
 include("client")

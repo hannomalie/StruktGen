@@ -1,23 +1,19 @@
+import struktgen.api.Strukt
 import java.nio.ByteBuffer
 
-annotation class Strukt
-
-@Strukt
-interface Simple {
+interface Simple: Strukt {
     val ByteBuffer.a: Int
     val ByteBuffer.b: Float
     companion object
 }
 
-@Strukt
-interface Nested {
+interface Nested: Strukt {
     var ByteBuffer.a: Int
     val ByteBuffer.b: Int
     companion object
 }
 
-@Strukt
-interface FooStrukt {
+interface FooStrukt: Strukt {
     val ByteBuffer.a: Int
     var ByteBuffer.b: Int
     val ByteBuffer.c: Float

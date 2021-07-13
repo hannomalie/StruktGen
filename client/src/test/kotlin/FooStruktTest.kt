@@ -9,6 +9,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.data.Offset.offset
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import struktgen.TypedBuffer
+import struktgen.typed
 import java.nio.ByteBuffer
 
 class FooStruktTest {

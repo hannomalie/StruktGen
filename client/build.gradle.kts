@@ -1,7 +1,7 @@
 plugins {
     kotlin("jvm")
     kotlin("kapt")
-    id("com.google.devtools.ksp") version "1.5.0-1.0.0-alpha10"
+    id("com.google.devtools.ksp") version "1.5.20-1.0.0-beta04"
     id( "me.champeau.jmh") version "0.6.4"
 }
 
@@ -15,6 +15,7 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation(project(":processor"))
     implementation("org.openjdk.jmh:jmh-core:1.21")
+    implementation(project(":api"))
     ksp("org.openjdk.jmh:jmh-generator-annprocess:1.21")
     ksp(project(":processor"))
 

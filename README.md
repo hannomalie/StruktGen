@@ -14,15 +14,13 @@ Code tells more than words
 
 ```kotlin
 
-@Strukt
-interface Nested {
+interface Nested: struktgen.api.Strukt {
     var ByteBuffer.a: Int
     val ByteBuffer.b: Int
     companion object
 }
 
-@Strukt
-interface FooStrukt {
+interface FooStrukt: struktgen.api.Strukt {
     val ByteBuffer.a: Int
     var ByteBuffer.b: Int
     val ByteBuffer.c: Float
@@ -185,6 +183,24 @@ That enabled direct access in the strukt's properties without the need to provid
 But it was ugly because it didn't really belong there and struct instances rarely where owner of the backing buffer.
 Additionally, there was some state management and lazy initialization that made implementation as well as usage of the lib
 more complicated.
+
+#### toString
+The current version doesn't require annotations anymore, instead there is an api module that is used as a dependency which contains
+a base interface that provides a toString method for your strukts.
+The special thing about that is, that this very method needs to get a ByteBuffer instance just like all the properties
+passed into, which makes it incompatible with javas default toString usage, for example for println.
+Another problem is that it's not possible to define fun ByteBuffer.toString(): String in the implementing class,
+because the member declaration from Any/Object shadows it.
+The buffer is therefore a regular parameter, which makes my api a bit more lame than it should be.
+Having a string representation is nonetheless a nice thing, you can get output like this:
+
+```kotlin
+
+buffer[0] {
+    println(it.toString(this))
+}
+// { diffuse = { x = 0.0, y = 0.0, z = 0.0 }, metallic = 0.0, materialType = FOLIAGE, uvScale = { x = 0.0, y = 0.0 } }
+```
 
 ### Performance
 
