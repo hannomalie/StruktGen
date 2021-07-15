@@ -68,19 +68,21 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 |
                 |data class TypedBuffer<T>(val byteBuffer: java.nio.ByteBuffer, val struktType: StruktType<T>) {
                 |    @PublishedApi internal val _slidingWindow = struktType.factory()
-                |    inline fun forEach(block: java.nio.ByteBuffer.(T) -> Unit) {
+                |    inline fun forEach(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: java.nio.ByteBuffer.(T) -> Unit) {
                 |       byteBuffer.position(0)
-                |       while(byteBuffer.position() + struktType.sizeInBytes <= byteBuffer.capacity()) {
+                |       val untilPosition = untilIndex * struktType.sizeInBytes
+                |       while(byteBuffer.position() < untilPosition) {
                 |           byteBuffer.block(_slidingWindow)
                 |           byteBuffer.position(byteBuffer.position() + struktType.sizeInBytes)
                 |       }
                 |       byteBuffer.position(0)
                 |    }
                 |    
-                |    inline fun forEachIndexed(block: java.nio.ByteBuffer.(Int, T) -> Unit) {
+                |    inline fun forEachIndexed(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: java.nio.ByteBuffer.(Int, T) -> Unit) {
                 |       byteBuffer.position(0)
                 |       var counter = 0
-                |       while(byteBuffer.position() + struktType.sizeInBytes <= byteBuffer.capacity()) {
+                |       val untilPosition = untilIndex * struktType.sizeInBytes
+                |       while(byteBuffer.position() < untilPosition) {
                 |           byteBuffer.block(counter, _slidingWindow)
                 |           counter++
                 |           byteBuffer.position(counter * struktType.sizeInBytes)
