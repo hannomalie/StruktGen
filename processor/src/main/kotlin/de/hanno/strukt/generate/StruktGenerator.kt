@@ -49,24 +49,17 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             stream.write("""
                 |package struktgen
                 |
-                |interface Strukt {
-                |  fun toString(buffer: java.nio.ByteBuffer): String
-                |}
-                |interface StruktType<T> {
-                |    val sizeInBytes: Int 
-                |    val factory: () -> T
+                |fun <T> java.nio.ByteBuffer.typed(struktType: struktgen.api.StruktType<T>) = object: TypedBuffer<T>(struktType) {
+                |    override val byteBuffer = this@typed
                 |}
                 |
-                |@JvmInline
-                |value class Invokable<T>(val buffer: TypedBuffer<T>) {
-                |    operator fun invoke(block: java.nio.ByteBuffer.(T) -> Unit) {
-                |       buffer.byteBuffer.block(buffer._slidingWindow)
-                |   }
-                |}
-                |
-                |fun <T> java.nio.ByteBuffer.typed(struktType: StruktType<T>) = TypedBuffer(this, struktType)
-                |
-                |data class TypedBuffer<T>(val byteBuffer: java.nio.ByteBuffer, val struktType: StruktType<T>) {
+                |abstract class TypedBuffer<T>(val struktType: struktgen.api.StruktType<T>) {
+                |    abstract val byteBuffer: java.nio.ByteBuffer
+                |    
+                |    
+                |    val size: Int
+                |        get() = byteBuffer.capacity()/struktType.sizeInBytes
+                |        
                 |    @PublishedApi internal val _slidingWindow = struktType.factory()
                 |    inline fun forEach(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: java.nio.ByteBuffer.(T) -> Unit) {
                 |       byteBuffer.position(0)
@@ -89,10 +82,13 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 |       }
                 |       byteBuffer.position(0)
                 |    }
-                |    inline operator fun get(index: Int): Invokable<T> {
+                |    inline operator fun get(index: Int): T {
                 |        byteBuffer.position(index * struktType.sizeInBytes)
-                |        return Invokable(this)
+                |        return _slidingWindow
                 |    }
+                |}
+                |fun <T> TypedBuffer(buffer: java.nio.ByteBuffer, struktType: struktgen.api.StruktType<T>) = object: TypedBuffer<T>(struktType) {
+                |   override val byteBuffer = buffer
                 |}
             """.trimMargin().toByteArray(Charsets.UTF_8))
         }
@@ -110,46 +106,49 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
 
             val toStringDeclaration = classDeclaration.generateToStringDeclaration(propertyDeclarations)
 
-            codeGenerator.createNewFile(Dependencies.ALL_FILES, nonEmptyPackageName, implClassName, "kt").use { stream ->
-                try {
-                    val companionDeclaration = """    companion object: struktgen.StruktType<$interfaceFQName> { 
-                        |        override val sizeInBytes = $byteSizeCounter 
-                        |        val $interfaceFQName.Companion.sizeInBytes get() = $byteSizeCounter
-                        |        val $interfaceFQName.Companion.type: struktgen.StruktType<$interfaceFQName> get() = this@Companion
-                        |        val $interfaceFQName.sizeInBytes get() = $byteSizeCounter
-                        |        operator fun $interfaceFQName.Companion.invoke() = $implClassName()
-                        |        override val factory = { $implClassName() }
-                        |        
-                        |        @PublishedApi internal val _slidingWindow = $implClassName()
-                        |        inline fun java.nio.ByteBuffer.forEach(block: java.nio.ByteBuffer.($interfaceFQName) -> Unit) { 
-                        |           position(0)
-                        |           while(position() + sizeInBytes <= capacity()) {
-                        |               block(_slidingWindow)
-                        |               position(position() + sizeInBytes)
-                        |           }
-                        |           position(0)
-                        |        }
-                        |        inline fun java.nio.ByteBuffer.forEachIndexed(block: java.nio.ByteBuffer.(kotlin.Int, $interfaceFQName) -> Unit) { 
-                        |           position(0)
-                        |           var counter = 0
-                        |           while(position() + sizeInBytes <= capacity()) {
-                        |               block(counter, _slidingWindow)
-                        |               counter++
-                        |               position(counter * sizeInBytes)
-                        |           }
-                        |           position(0)
-                        |        }
-                        |    }
-                        |""".trimMargin()
-                    stream.write(generateStruktImplementationCode(
-                        implClassName,
-                        interfaceFQName,
-                        propertyDeclarationsString,
-                        toStringDeclaration,
-                        companionDeclaration
-                    ))
-                } catch (e: IOException) {
-                    logger.error("Cannot write to file $nonEmptyPackageName/$implClassName")
+            // TODO: Check why the hell files are tried to be written multiple times instead of this nasty hack
+            if(codeGenerator.generatedFile.toList().none { it.nameWithoutExtension == implClassName }) {
+                codeGenerator.createNewFile(Dependencies.ALL_FILES, nonEmptyPackageName, implClassName, "kt").use { stream ->
+                    try {
+                        val companionDeclaration = """    companion object: struktgen.api.StruktType<$interfaceFQName> { 
+                    |        override val sizeInBytes = $byteSizeCounter 
+                    |        val $interfaceFQName.Companion.sizeInBytes get() = $byteSizeCounter
+                    |        val $interfaceFQName.Companion.type: struktgen.api.StruktType<$interfaceFQName> get() = this@Companion
+                    |        val $interfaceFQName.sizeInBytes get() = $byteSizeCounter
+                    |        operator fun $interfaceFQName.Companion.invoke() = $implClassName()
+                    |        override val factory = { $implClassName() }
+                    |        
+                    |        @PublishedApi internal val _slidingWindow = $implClassName()
+                    |        inline fun java.nio.ByteBuffer.forEach(block: java.nio.ByteBuffer.($interfaceFQName) -> Unit) { 
+                    |           position(0)
+                    |           while(position() + sizeInBytes <= capacity()) {
+                    |               block(_slidingWindow)
+                    |               position(position() + sizeInBytes)
+                    |           }
+                    |           position(0)
+                    |        }
+                    |        inline fun java.nio.ByteBuffer.forEachIndexed(block: java.nio.ByteBuffer.(kotlin.Int, $interfaceFQName) -> Unit) { 
+                    |           position(0)
+                    |           var counter = 0
+                    |           while(position() + sizeInBytes <= capacity()) {
+                    |               block(counter, _slidingWindow)
+                    |               counter++
+                    |               position(counter * sizeInBytes)
+                    |           }
+                    |           position(0)
+                    |        }
+                    |    }
+                    |""".trimMargin()
+                        stream.write(generateStruktImplementationCode(
+                            implClassName,
+                            interfaceFQName,
+                            propertyDeclarationsString,
+                            toStringDeclaration,
+                            companionDeclaration
+                        ))
+                    } catch (e: IOException) {
+                        logger.error("Cannot write to file $nonEmptyPackageName/$implClassName")
+                    }
                 }
             }
         }
@@ -165,7 +164,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
         toStringDeclaration: String,
         companionDeclaration: String
     ) = """
-                    |class $implClassName: $interfaceFQName, struktgen.Strukt {
+                    |class $implClassName: $interfaceFQName, struktgen.api.Strukt {
                     |$propertyDeclarations
                     |$toStringDeclaration
                     |$companionDeclaration
@@ -211,7 +210,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 val propertyDeclarations = declaration.findPropertyDeclarations()
                 val toStringDeclaration = declaration.generateToStringDeclaration(propertyDeclarations)
 
-                return """|    private val _${propertyName} = object: ${declaration.qualifiedName!!.asString()}, struktgen.Strukt {
+                return """|    private val _${propertyName} = object: ${declaration.qualifiedName!!.asString()}, struktgen.api.Strukt {
                     |${propertyDeclarations.toPropertyDeclarations(currentByteOffset)}
                     |$toStringDeclaration
                     |    }"""

@@ -205,10 +205,10 @@ class FooStruktTest {
 
     @Test
     fun `typed buffer index access works`() {
-        val typedBuffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * 10).typed(FooStrukt.type)
+        val typedBuffer: TypedBuffer<FooStrukt> = ByteBuffer.allocate(FooStrukt.sizeInBytes * 10).typed(FooStrukt.type)
 
-        typedBuffer[0] {
-            it.run {
+        typedBuffer[0].run {
+            typedBuffer.byteBuffer.run {
                 assertThat(b).isEqualTo(0)
                 b = 5
                 assertThat(b).isEqualTo(5)
