@@ -177,12 +177,20 @@ open class StruktBenchmark {
             override val ByteBuffer.b: Int
                 get() = 0
 
+            override fun toString(buffer: ByteBuffer): String {
+                TODO("Not implemented")
+            }
+
         }
         override val ByteBuffer.d: Nested
             get() = _d
         override var ByteBuffer.e: Boolean
             get() = true
             set(value) {}
+
+        override fun toString(buffer: ByteBuffer): String {
+            TODO("Not implemented")
+        }
     }
 }
 
