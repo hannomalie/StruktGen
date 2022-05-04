@@ -45,6 +45,57 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             it.accept(visitor, Unit)
         }
 
+        codeGenerator.createNewFile(Dependencies.ALL_FILES, "default", "default", "kt").use { stream ->
+            stream.write("""
+                |package struktgen
+                |
+                |fun <T> java.nio.ByteBuffer.typed(struktType: struktgen.api.StruktType<T>) = object: TypedBuffer<T>(struktType) {
+                |    override val byteBuffer = this@typed
+                |}
+                |
+                |abstract class TypedBuffer<T>(val struktType: struktgen.api.StruktType<T>) {
+                |    abstract val byteBuffer: java.nio.ByteBuffer
+                |    
+                |    
+                |    val size: Int
+                |        get() = byteBuffer.capacity()/struktType.sizeInBytes
+                |        
+                |    @PublishedApi internal val _slidingWindow = struktType.factory()
+                |    inline fun forEach(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: context(java.nio.ByteBuffer) (T) -> Unit) {
+                |       byteBuffer.position(0)
+                |       val untilPosition = untilIndex * struktType.sizeInBytes
+                |       while(byteBuffer.position() < untilPosition) {
+                |           block(byteBuffer, _slidingWindow)
+                |           byteBuffer.position(byteBuffer.position() + struktType.sizeInBytes)
+                |       }
+                |       byteBuffer.position(0)
+                |    }
+                |    
+                |    inline fun forEachIndexed(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: context(java.nio.ByteBuffer) (Int, T) -> Unit) {
+                |       byteBuffer.position(0)
+                |       var counter = 0
+                |       val untilPosition = untilIndex * struktType.sizeInBytes
+                |       while(byteBuffer.position() < untilPosition) {
+                |           block(byteBuffer, counter, _slidingWindow)
+                |           counter++
+                |           byteBuffer.position(counter * struktType.sizeInBytes)
+                |       }
+                |       byteBuffer.position(0)
+                |    }
+                |    inline operator fun get(index: Int): T {
+                |        byteBuffer.position(index * struktType.sizeInBytes)
+                |        return _slidingWindow
+                |    }
+                |    inline fun <R> forIndex(index: Int, block: context(java.nio.ByteBuffer) (T) -> R): R {
+                |        byteBuffer.position(index * struktType.sizeInBytes)
+                |        return block(byteBuffer, _slidingWindow)
+                |    }
+                |}
+                |fun <T> TypedBuffer(buffer: java.nio.ByteBuffer, struktType: struktgen.api.StruktType<T>) = object: TypedBuffer<T>(struktType) {
+                |   override val byteBuffer = buffer
+                |}
+            """.trimMargin().toByteArray(Charsets.UTF_8))
+        }
         propertyDeclarationsPerClass.forEach { (classDeclaration, propertyDeclarations) ->
 
             val interfaceName = classDeclaration.simpleName.asString()
@@ -164,15 +215,9 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             override fun setterCallAsString(currentByteOffset: kotlin.Int): String = throw IllegalStateException("This should never get called, remove me later")
 
             fun getCustomInstancesDeclarations(propertyName: String, currentByteOffset: AtomicInteger): String {
-                val unorderedPropertyDeclarations = declaration.findPropertyDeclarations()
-                val printDeclaration = declaration.generatePrintDeclaration(unorderedPropertyDeclarations)
+                val propertyDeclarations = declaration.findPropertyDeclarations()
+                val printDeclaration = declaration.generatePrintDeclaration(propertyDeclarations)
 
-                val propertyDeclarations = declaration.containingFile?.filePath?.let { filePath ->
-                    val fileText = File(filePath).readText()
-                    unorderedPropertyDeclarations.sortedBy { fileText.indexOf(it.simpleName.asString()) }
-                } ?: run {
-                    unorderedPropertyDeclarations
-                }
                 return """|    private val _${propertyName} = object: ${declaration.qualifiedName!!.asString()}, struktgen.api.Strukt {
                     |${propertyDeclarations.toPropertyDeclarations(currentByteOffset)}
                     |$printDeclaration
