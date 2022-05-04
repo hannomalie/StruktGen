@@ -2,22 +2,31 @@ import struktgen.api.Strukt
 import java.nio.ByteBuffer
 
 interface Simple: Strukt {
-    val ByteBuffer.a: Int
-    val ByteBuffer.b: Float
+    context(ByteBuffer)
+    val a: Int
+    context(ByteBuffer)
+    val b: Float
     companion object
 }
 
 interface Nested: Strukt {
-    var ByteBuffer.a: Int
-    val ByteBuffer.b: Int
+    context(ByteBuffer)
+    var a: Int
+    context(ByteBuffer)
+    val b: Int
     companion object
 }
 
 interface FooStrukt: Strukt {
-    val ByteBuffer.a: Int
-    var ByteBuffer.b: Int
-    val ByteBuffer.c: Float
-    val ByteBuffer.d: Nested
-    var ByteBuffer.e: Boolean
+    context(ByteBuffer)
+    val a: Int
+    context(ByteBuffer)
+    var b: Int
+    context(ByteBuffer)
+    val c: Float
+    context(ByteBuffer)
+    val d: Nested
+    context(ByteBuffer)
+    var e: Boolean
     companion object
 }

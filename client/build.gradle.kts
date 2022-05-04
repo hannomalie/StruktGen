@@ -1,7 +1,9 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     kotlin("jvm")
     kotlin("kapt")
-    id("com.google.devtools.ksp") version "1.5.20-1.0.0-beta04"
+    id("com.google.devtools.ksp") version "1.6.21-1.0.5"
     id( "me.champeau.jmh") version "0.6.4"
 }
 
@@ -31,5 +33,11 @@ tasks.test {
 kotlin {
     sourceSets["main"].apply {
         kotlin.srcDir("build/generated/ksp/main/kotlin/")
+    }
+}
+
+tasks.withType(KotlinCompile::class) {
+    kotlinOptions {
+        freeCompilerArgs = freeCompilerArgs + "-Xcontext-receivers"
     }
 }

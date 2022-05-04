@@ -73,19 +73,19 @@ open class StruktBenchmark {
 
     @Benchmark
     fun getPropertyVanilla(blackHole: Blackhole, state: SimpleState): Int {
-        val b = state.buffer.run { state.strukt.run { b } }
+        val b = state.buffer.run { state.strukt.b }
         blackHole.consume(b)
         return b
     }
     @Benchmark
     fun getPropertyStrukt(blackHole: Blackhole, state: StruktState): Int {
-        val b = state.buffer.run { state.strukt.run { b } }
+        val b = state.buffer.run { state.strukt.b }
         blackHole.consume(b)
         return b
     }
     @Benchmark
     fun unsafe_getPropertyStrukt(blackHole: Blackhole, state: UnsafeStruktState): Int {
-        val b = state.buffer.run { state.strukt.run { b } }
+        val b = state.buffer.run { state.strukt.b }
         blackHole.consume(b)
         return b
     }
@@ -94,8 +94,8 @@ open class StruktBenchmark {
     fun setPropertyVanilla(blackHole: Blackhole, state: SimpleState): Int {
         val da = state.buffer.run {
             state.strukt.run {
-                d.run { a = 2 }
-                d.run { a }
+                d.a = 2
+                d.a
             }
         }
         blackHole.consume(da)
@@ -106,8 +106,8 @@ open class StruktBenchmark {
     fun setPropertyStrukt(blackHole: Blackhole, state: StruktState): Int {
         val da = state.buffer.run {
             state.strukt.run {
-                d.run { a = 2 }
-                d.run { a }
+                d.a = 2
+                d.a
             }
         }
         blackHole.consume(da)
@@ -118,8 +118,8 @@ open class StruktBenchmark {
     fun unsafe_setPropertyStrukt(blackHole: Blackhole, state: UnsafeStruktState): Int {
         val da = state.buffer.run {
             state.strukt.run {
-                d.run { a = 2 }
-                d.run { a }
+                d.a = 2
+                d.a
             }
         }
         blackHole.consume(da)
@@ -129,14 +129,14 @@ open class StruktBenchmark {
 //    @Benchmark
     fun iterate_getPropertyStrukt(blackHole: Blackhole, state: IterationStruktState) {
         state.buffer.forEach { strukt ->
-            val b = strukt.run { b }
+            val b = strukt.b
             blackHole.consume(b)
         }
     }
 //    @Benchmark
     fun iterate_getPropertyVanilla(blackHole: Blackhole, state: IterationVanillaState) {
         state.instances.forEach { strukt ->
-            val b = strukt.run { state.buffer.run { b } }
+            val b = state.buffer.run { strukt.b }
             blackHole.consume(b)
         }
     }
@@ -144,51 +144,64 @@ open class StruktBenchmark {
 //    @Benchmark
     fun unsafe_iterate_getPropertyStrukt(blackHole: Blackhole, state: UnsafeIterationStruktState) {
         state.buffer.forEach { strukt ->
-            val b = strukt.run { b }
+            val b = strukt.b
             blackHole.consume(b)
         }
     }
 //    @Benchmark
     fun iterateindexed_getPropertyStrukt(blackHole: Blackhole, state: IterationStruktState) {
         state.buffer.forEachIndexed { index, strukt ->
-            val b = strukt.run { b }
+            val b = strukt.b
             blackHole.consume(b)
         }
     }
 
     class VanillaStruktImpl : FooStrukt {
-        override val ByteBuffer.a: Int
+
+        context(ByteBuffer)
+        override val a: Int
             get() = 0
         var _b = 0
-        override var ByteBuffer.b: Int
+
+        context(ByteBuffer)
+        override var b: Int
             get() = _b
             set(value) {
                 _b = value
             }
-        override val ByteBuffer.c: Float
+
+        context(ByteBuffer)
+        override val c: Float
             get() = 0f
         val _d = object : Nested {
             var _a = 0
-            override var ByteBuffer.a: Int
+
+            context(ByteBuffer)
+            override var a: Int
                 get() = _a
                 set(value) {
                     _a = value
                 }
-            override val ByteBuffer.b: Int
+            context(ByteBuffer)
+            override val b: Int
                 get() = 0
 
-            override fun toString(buffer: ByteBuffer): String {
+            context(ByteBuffer)
+            override fun print(): String {
                 TODO("Not implemented")
             }
 
         }
-        override val ByteBuffer.d: Nested
+        context(ByteBuffer)
+        override val d: Nested
             get() = _d
-        override var ByteBuffer.e: Boolean
+        context(ByteBuffer)
+        override var e: Boolean
             get() = true
             set(value) {}
 
-        override fun toString(buffer: ByteBuffer): String {
+        context(ByteBuffer)
+        override fun print(): String {
             TODO("Not implemented")
         }
     }

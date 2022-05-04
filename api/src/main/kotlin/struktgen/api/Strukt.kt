@@ -3,7 +3,8 @@ package struktgen.api
 import java.nio.ByteBuffer
 
 interface Strukt {
-    fun toString(buffer: ByteBuffer): String
+    context(ByteBuffer)
+    fun print(): String
 }
 
 interface StruktType<T> {

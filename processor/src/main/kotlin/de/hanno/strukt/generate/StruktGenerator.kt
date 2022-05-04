@@ -1,7 +1,6 @@
 package de.hanno.strukt.generate
 
 import com.google.devtools.ksp.getDeclaredProperties
-import com.google.devtools.ksp.isLocal
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
 import de.hanno.strukt.generate.StruktGenerator.Type.Companion.parse
@@ -61,22 +60,22 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 |        get() = byteBuffer.capacity()/struktType.sizeInBytes
                 |        
                 |    @PublishedApi internal val _slidingWindow = struktType.factory()
-                |    inline fun forEach(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: java.nio.ByteBuffer.(T) -> Unit) {
+                |    inline fun forEach(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: context(java.nio.ByteBuffer) (T) -> Unit) {
                 |       byteBuffer.position(0)
                 |       val untilPosition = untilIndex * struktType.sizeInBytes
                 |       while(byteBuffer.position() < untilPosition) {
-                |           byteBuffer.block(_slidingWindow)
+                |           block(byteBuffer, _slidingWindow)
                 |           byteBuffer.position(byteBuffer.position() + struktType.sizeInBytes)
                 |       }
                 |       byteBuffer.position(0)
                 |    }
                 |    
-                |    inline fun forEachIndexed(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: java.nio.ByteBuffer.(Int, T) -> Unit) {
+                |    inline fun forEachIndexed(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: context(java.nio.ByteBuffer) (Int, T) -> Unit) {
                 |       byteBuffer.position(0)
                 |       var counter = 0
                 |       val untilPosition = untilIndex * struktType.sizeInBytes
                 |       while(byteBuffer.position() < untilPosition) {
-                |           byteBuffer.block(counter, _slidingWindow)
+                |           block(byteBuffer, counter, _slidingWindow)
                 |           counter++
                 |           byteBuffer.position(counter * struktType.sizeInBytes)
                 |       }
@@ -85,6 +84,10 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 |    inline operator fun get(index: Int): T {
                 |        byteBuffer.position(index * struktType.sizeInBytes)
                 |        return _slidingWindow
+                |    }
+                |    inline fun <R> forIndex(index: Int, block: context(java.nio.ByteBuffer) (T) -> R): R {
+                |        byteBuffer.position(index * struktType.sizeInBytes)
+                |        return block(byteBuffer, _slidingWindow)
                 |    }
                 |}
                 |fun <T> TypedBuffer(buffer: java.nio.ByteBuffer, struktType: struktgen.api.StruktType<T>) = object: TypedBuffer<T>(struktType) {
@@ -104,7 +107,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             val byteSizeCounter = AtomicInteger()
             val propertyDeclarationsString = propertyDeclarations.toPropertyDeclarations(byteSizeCounter)
 
-            val toStringDeclaration = classDeclaration.generateToStringDeclaration(propertyDeclarations)
+            val printDeclaration = classDeclaration.generatePrintDeclaration(propertyDeclarations)
 
             // TODO: Check why the hell files are tried to be written multiple times instead of this nasty hack
             if(codeGenerator.generatedFile.toList().none { it.nameWithoutExtension == implClassName }) {
@@ -119,19 +122,19 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                     |        override val factory = { $implClassName() }
                     |        
                     |        @PublishedApi internal val _slidingWindow = $implClassName()
-                    |        inline fun java.nio.ByteBuffer.forEach(block: java.nio.ByteBuffer.($interfaceFQName) -> Unit) { 
+                    |        inline fun java.nio.ByteBuffer.forEach(block: context(java.nio.ByteBuffer) ($interfaceFQName) -> Unit) { 
                     |           position(0)
                     |           while(position() + sizeInBytes <= capacity()) {
-                    |               block(_slidingWindow)
+                    |               block(this, _slidingWindow)
                     |               position(position() + sizeInBytes)
                     |           }
                     |           position(0)
                     |        }
-                    |        inline fun java.nio.ByteBuffer.forEachIndexed(block: java.nio.ByteBuffer.(kotlin.Int, $interfaceFQName) -> Unit) { 
+                    |        inline fun java.nio.ByteBuffer.forEachIndexed(block: context(java.nio.ByteBuffer) (kotlin.Int, $interfaceFQName) -> Unit) { 
                     |           position(0)
                     |           var counter = 0
                     |           while(position() + sizeInBytes <= capacity()) {
-                    |               block(counter, _slidingWindow)
+                    |               block(this, counter, _slidingWindow)
                     |               counter++
                     |               position(counter * sizeInBytes)
                     |           }
@@ -143,7 +146,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                             implClassName,
                             interfaceFQName,
                             propertyDeclarationsString,
-                            toStringDeclaration,
+                            printDeclaration,
                             companionDeclaration
                         ))
                     } catch (e: IOException) {
@@ -161,12 +164,12 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
         implClassName: String,
         interfaceFQName: String,
         propertyDeclarations: String,
-        toStringDeclaration: String,
+        printDeclaration: String,
         companionDeclaration: String
     ) = """
                     |class $implClassName: $interfaceFQName, struktgen.api.Strukt {
                     |$propertyDeclarations
-                    |$toStringDeclaration
+                    |$printDeclaration
                     |$companionDeclaration
                     |}
                 """.trimMargin().toByteArray(Charsets.UTF_8)
@@ -176,7 +179,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
         abstract fun setterCallAsString(currentByteOffset: kotlin.Int): String
 
         open fun propertyDeclarationAsString(isMutable: kotlin.Boolean, propertyName: String, currentByteOffset: AtomicInteger): String {
-            return """override ${if(isMutable) "var" else "val"} java.nio.ByteBuffer.$propertyName: $fqName 
+            return """context(java.nio.ByteBuffer) override ${if(isMutable) "var" else "val"} $propertyName: $fqName 
                 |   get() { return ${getterCallAsString(currentByteOffset.get())} }
                 |   ${if(isMutable) "set(value) { ${setterCallAsString(currentByteOffset.get())} }" else ""}""".trimMargin()
         }
@@ -208,11 +211,11 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
 
             fun getCustomInstancesDeclarations(propertyName: String, currentByteOffset: AtomicInteger): String {
                 val propertyDeclarations = declaration.findPropertyDeclarations()
-                val toStringDeclaration = declaration.generateToStringDeclaration(propertyDeclarations)
+                val printDeclaration = declaration.generatePrintDeclaration(propertyDeclarations)
 
                 return """|    private val _${propertyName} = object: ${declaration.qualifiedName!!.asString()}, struktgen.api.Strukt {
                     |${propertyDeclarations.toPropertyDeclarations(currentByteOffset)}
-                    |$toStringDeclaration
+                    |$printDeclaration
                     |    }"""
             }
 
@@ -220,7 +223,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 if(isMutable) throw IllegalStateException("var properties are not allowed for nested properties, as they don't make sense")
                 return """|
                     |    ${getCustomInstancesDeclarations(propertyName, currentByteOffset)}
-                    |    override val java.nio.ByteBuffer.$propertyName: $fqName get() { return _${propertyName} }
+                    |    context(java.nio.ByteBuffer) override val $propertyName: $fqName get() { return _${propertyName} }
                     |""".trimMargin()
             }
 
@@ -260,20 +263,20 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
     }
 }
 
-fun KSClassDeclaration.generateToStringDeclaration(list: List<KSPropertyDeclaration>): String {
+fun KSClassDeclaration.generatePrintDeclaration(list: List<KSPropertyDeclaration>): String {
     val s = list.joinToString(" + \", \" + ") { ksPropertyDeclaration ->
-        val toStringCall = ksPropertyDeclaration.parseType()!!.let { type ->
+        val printCall = ksPropertyDeclaration.parseType()!!.let { type ->
             when (type) {
                 is StruktGenerator.Type.Custom -> {
                     val qualifiedThis = if (classKind == ClassKind.OBJECT) "" else ksPropertyDeclaration.simpleName.asString()
-                    "_$qualifiedThis.toString(this)"
+                    "_$qualifiedThis.print()"
                 }
                 else -> ksPropertyDeclaration.simpleName.asString() + ".toString()"
             }
         }
-        "\"" + ksPropertyDeclaration.simpleName.asString() + " = \"" + "+ " + toStringCall
+        "\"" + ksPropertyDeclaration.simpleName.asString() + " = \"" + "+ " + printCall
     }
-    return """     override fun toString(buffer: java.nio.ByteBuffer) = buffer.run {"{ "+$s+" }"} """
+    return """     context(java.nio.ByteBuffer) override fun print() = "{ "+$s+" }" """
 }
 private val StruktGenerator.Type.sizeInBytes: Int
     get() {

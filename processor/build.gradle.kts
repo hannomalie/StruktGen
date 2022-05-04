@@ -12,3 +12,9 @@ dependencies {
     implementation("com.google.devtools.ksp:symbol-processing-api:1.5.20-1.0.0-beta04")
     implementation(project(":api"))
 }
+
+tasks.withType(org.jetbrains.kotlin.gradle.dsl.KotlinCompile::class) {
+    kotlinOptions {
+        freeCompilerArgs = freeCompilerArgs + "-Xcontext-receivers"
+    }
+}

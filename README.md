@@ -15,17 +15,24 @@ Code tells more than words
 ```kotlin
 
 interface Nested: struktgen.api.Strukt {
-    var ByteBuffer.a: Int
-    val ByteBuffer.b: Int
+    context(ByteBuffer)
+    var a: Int
+    context(ByteBuffer)
+    val b: Int
     companion object
 }
 
 interface FooStrukt: struktgen.api.Strukt {
-    val ByteBuffer.a: Int
-    var ByteBuffer.b: Int
-    val ByteBuffer.c: Float
-    val ByteBuffer.d: Nested
-    var ByteBuffer.e: Boolean
+    context(ByteBuffer)
+    val a: Int
+    context(ByteBuffer)
+    var b: Int
+    context(ByteBuffer)
+    val c: Float
+    context(ByteBuffer)
+    val d: Nested
+    context(ByteBuffer)
+    var e: Boolean
     companion object
 }
 
@@ -34,15 +41,13 @@ interface FooStrukt: struktgen.api.Strukt {
 val simple = FooStrukt()
 assertThat(FooStrukt.sizeInBytes).isEqualTo(24)
 val buffer = ByteBuffer.allocate(FooStrukt.sizeInBytes)
-simple.run {
-    buffer.run {
-        assertThat(a).isEqualTo(0)
-        assertThat(b).isEqualTo(0)
-        assertThat(c).isEqualTo(0f)
-        assertThat(d.run { a }).isEqualTo(0)
-        assertThat(d.run { b }).isEqualTo(0)
-        assertThat(e).isFalse()
-    }
+buffer.run {
+    assertThat(simmple.a).isEqualTo(0)
+    assertThat(simmple.b).isEqualTo(0)
+    assertThat(simmple.c).isEqualTo(0f)
+    assertThat(simmple.d.a).isEqualTo(0)
+    assertThat(simmple.d.b).isEqualTo(0)
+    assertThat(simmple.e).isFalse()
 }
 ```
 
@@ -56,16 +61,12 @@ First how easy it is:
 val buffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * arraySize)
 
 buffer.forEach { strukt ->
-    strukt.run {
-        assertThat(b).isEqualTo(0)
-        b = counter
-        assertThat(b).isEqualTo(counter)
-    }
+    assertThat(strukt.b).isEqualTo(0)
+    strukt.b = counter
+    assertThat(strukt.b).isEqualTo(counter)
 }
 buffer.forEachIndexed { index, strukt ->
-    strukt.run {
-        assertThat(b).isEqualTo(0) 
-    }
+    assertThat(strukt.b).isEqualTo(0) 
 }
 ```
 Note how the buffer is already the receiver of the passed lambda, which eliminates the need of one scoping function
@@ -92,11 +93,9 @@ on the companion of the strukt interface's companion.
 val typedBuffer = ByteBuffer.allocate(FooStrukt.sizeInBytes * 10).typed(FooStrukt.type) // StruktType in action
 
 typedBuffer.forEachIndexed { index, it ->
-    it.run {
-        assertThat(b).isEqualTo(0)
-        b = index
-        assertThat(b).isEqualTo(index)
-    }
+    assertThat(it.b).isEqualTo(0)
+    it.b = index
+    assertThat(it.b).isEqualTo(index)
 }
 ```
 A typed buffer is handy when you don't want to pass around naked ByteBuffer instances, as you
@@ -112,12 +111,10 @@ I created some (not yet optimized) syntax that lets you index into a typed buffe
 and immediately have the buffer as a receiver.
 
 ```kotlin
-typedBuffer[0] {
-    it.run {
-        assertThat(b).isEqualTo(0)
-        b = 5
-        assertThat(b).isEqualTo(5)
-    }
+typedBuffer.forIndex(0) {
+    assertThat(it.b).isEqualTo(0)
+    it.b = 5
+    assertThat(it.b).isEqualTo(5)
 }
 ```
 
@@ -125,28 +122,35 @@ typedBuffer[0] {
 For the given example, the processor generates the following code, just formatted a little bit uglier
 ```kotlin
 class FooStruktImpl : FooStrukt {
-    override val java.nio.ByteBuffer.a: kotlin.Int
+    context(java.nio.ByteBuffer)
+    override val a: kotlin.Int
         get() = getInt(position() + 0)
 
-    override var java.nio.ByteBuffer.b: kotlin.Int
+    context(java.nio.ByteBuffer)
+    override var b: kotlin.Int
         get() = getInt(position() + 4)
         set(value) { putInt(position() + 4, value) }
-    override val java.nio.ByteBuffer.c: kotlin.Float
+    context(java.nio.ByteBuffer)
+    override val c: kotlin.Float
         get() = getFloat(position() + 8)
 
 
     private val _d = object : Nested {
-        override var java.nio.ByteBuffer.a: kotlin.Int
+        context(java.nio.ByteBuffer)
+        override var a: kotlin.Int
             get() = getInt(position() + 12)
             set(value) { putInt(position() + 12, value) }
-        override val java.nio.ByteBuffer.b: kotlin.Int
+        context(java.nio.ByteBuffer)
+        override val b: kotlin.Int
             get() = getInt(position() + 16)
 
     }
-    override val java.nio.ByteBuffer.d: Nested
+    context(java.nio.ByteBuffer)
+    override val d: Nested
         get() = _d
 
-    override var java.nio.ByteBuffer.e: kotlin.Boolean
+    context(java.nio.ByteBuffer)
+    override var e: kotlin.Boolean
         get() = getInt(position() + 20) == 1
         set(value) { putInt(position() + 20, if (value) 1 else 0) }
 
@@ -170,34 +174,39 @@ The companion object is for convenience - you always want to know the size of yo
 so that you can provide buffer storage with correct bounds, for example for iteration.
 
 ### Current syntax limitations
-#### Dispatch/extension receiver ugliness
-Currently, it's not possible to call extension properties of an instance with the extension receiver in scope and
-an explicit dispatch receiver - this makes the syntax currently a bit ugly, because one needs to use scoping functions,
-even though the ByteBuffer is already in scope.
-The problem is already tracked in a [Kotlin ticket](https://youtrack.jetbrains.com/issue/KT-42626) and is probably solved
-as a subtask of one of the next upcoming Kotlin features called [multiple receivers](https://youtrack.jetbrains.com/issue/KT-10468).
+#### Dispatch/extension receiver mild ugliness
+Context receivers are currently a preview feature in Kotlin, but I nonetheless added support for it and made it
+the only codegen strategy because it works reasonably well.
+So you must enable it in your project in order to be able to use the code generated by StruktGen.
+The current state of the language feature doesn't give you any new mechanism to bring context receivers
+into scope, which means you need to use the classic scope functions (with, apply, run ...) and bring
+a ByteBuffer into scope first, before you can use a Strukt's properties.
+This is a lot better than what I achieved without context receivers, as one needed to nest multiple run-calls
+before, but let's all forget about that :)
 
-#### ByteBuffer extension properties
+#### ByteBuffer context properties
 In my previous library, I made the backing buffer instances a property on the struct (I didn't use 'k' back then) itself.
 That enabled direct access in the strukt's properties without the need to provide it on the callsite.
 But it was ugly because it didn't really belong there and struct instances rarely where owner of the backing buffer.
 Additionally, there was some state management and lazy initialization that made implementation as well as usage of the lib
 more complicated.
 
-#### toString
+#### toString / print
 The current version doesn't require annotations anymore, instead there is an api module that is used as a dependency which contains
-a base interface that provides a toString method for your strukts.
+a base interface that provides a print method for your strukts.
 The special thing about that is, that this very method needs to get a ByteBuffer instance just like all the properties
 passed into, which makes it incompatible with javas default toString usage, for example for println.
-Another problem is that it's not possible to define fun ByteBuffer.toString(): String in the implementing class,
+Another problem is that it's not possible to define fun ´ByteBuffer.toString(): String´ in the implementing class,
 because the member declaration from Any/Object shadows it.
-The buffer is therefore a regular parameter, which makes my api a bit more lame than it should be.
-Having a string representation is nonetheless a nice thing, you can get output like this:
+The same goes for a member function context(ByteBuffer) toString(): String, because its signature clashes with Java's
+toString.
+The method is therefore named `print` and uses a ByteBuffer context, which makes its usage a bit uglier than it could be, but
+having a string representation is nonetheless a useful thing, you can get output like this:
 
 ```kotlin
 
-buffer[0] {
-    println(it.toString(this))
+buffer.forIndex(0) {
+    println(it.print())
 }
 // { diffuse = { x = 0.0, y = 0.0, z = 0.0 }, metallic = 0.0, materialType = FOLIAGE, uvScale = { x = 0.0, y = 0.0 } }
 ```
