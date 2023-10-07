@@ -44,57 +44,6 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             it.accept(visitor, Unit)
         }
 
-        codeGenerator.createNewFile(Dependencies.ALL_FILES, "default", "default", "kt").use { stream ->
-            stream.write("""
-                |package struktgen
-                |
-                |fun <T> java.nio.ByteBuffer.typed(struktType: struktgen.api.StruktType<T>) = object: TypedBuffer<T>(struktType) {
-                |    override val byteBuffer = this@typed
-                |}
-                |
-                |abstract class TypedBuffer<T>(val struktType: struktgen.api.StruktType<T>) {
-                |    abstract val byteBuffer: java.nio.ByteBuffer
-                |    
-                |    
-                |    val size: Int
-                |        get() = byteBuffer.capacity()/struktType.sizeInBytes
-                |        
-                |    @PublishedApi internal val _slidingWindow = struktType.factory()
-                |    inline fun forEach(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: context(java.nio.ByteBuffer) (T) -> Unit) {
-                |       byteBuffer.position(0)
-                |       val untilPosition = untilIndex * struktType.sizeInBytes
-                |       while(byteBuffer.position() < untilPosition) {
-                |           block(byteBuffer, _slidingWindow)
-                |           byteBuffer.position(byteBuffer.position() + struktType.sizeInBytes)
-                |       }
-                |       byteBuffer.position(0)
-                |    }
-                |    
-                |    inline fun forEachIndexed(untilIndex: Int = byteBuffer.capacity()/struktType.sizeInBytes, block: context(java.nio.ByteBuffer) (Int, T) -> Unit) {
-                |       byteBuffer.position(0)
-                |       var counter = 0
-                |       val untilPosition = untilIndex * struktType.sizeInBytes
-                |       while(byteBuffer.position() < untilPosition) {
-                |           block(byteBuffer, counter, _slidingWindow)
-                |           counter++
-                |           byteBuffer.position(counter * struktType.sizeInBytes)
-                |       }
-                |       byteBuffer.position(0)
-                |    }
-                |    inline operator fun get(index: Int): T {
-                |        byteBuffer.position(index * struktType.sizeInBytes)
-                |        return _slidingWindow
-                |    }
-                |    inline fun <R> forIndex(index: Int, block: context(java.nio.ByteBuffer) (T) -> R): R {
-                |        byteBuffer.position(index * struktType.sizeInBytes)
-                |        return block(byteBuffer, _slidingWindow)
-                |    }
-                |}
-                |fun <T> TypedBuffer(buffer: java.nio.ByteBuffer, struktType: struktgen.api.StruktType<T>) = object: TypedBuffer<T>(struktType) {
-                |   override val byteBuffer = buffer
-                |}
-            """.trimMargin().toByteArray(Charsets.UTF_8))
-        }
         propertyDeclarationsPerClass.forEach { (classDeclaration, propertyDeclarations) ->
 
             val interfaceName = classDeclaration.simpleName.asString()
@@ -197,6 +146,10 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getFloat(position() + $currentByteOffset)"
             override fun setterCallAsString(currentByteOffset: kotlin.Int): String = "putFloat(position() + $currentByteOffset, value)"
         }
+        object Double: Type(kotlin.Double::class.qualifiedName!!) {
+            override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getDouble(position() + $currentByteOffset)"
+            override fun setterCallAsString(currentByteOffset: kotlin.Int): String = "putDouble(position() + $currentByteOffset, value)"
+        }
         object Long: Type(kotlin.Long::class.qualifiedName!!) {
             override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "getLong(position() + $currentByteOffset)"
             override fun setterCallAsString(currentByteOffset: kotlin.Int): String = "putLong(position() + $currentByteOffset, value)"
@@ -237,6 +190,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
                 kotlin.Boolean::class.qualifiedName!!.toString() -> Boolean
                 kotlin.Int::class.qualifiedName!!.toString() -> Int
                 kotlin.Float::class.qualifiedName!!.toString() -> Float
+                kotlin.Double::class.qualifiedName!!.toString() -> Double
                 kotlin.Long::class.qualifiedName!!.toString() -> Long
                 else -> {
                     when {
@@ -287,6 +241,7 @@ private val StruktGenerator.Type.sizeInBytes: Int
             StruktGenerator.Type.Int -> 4
             StruktGenerator.Type.Long -> 8
             is StruktGenerator.Type.Enum -> 4
+            StruktGenerator.Type.Double -> 8
         }
     }
 private val KSClassDeclaration.sizeInBytes: Int
@@ -300,6 +255,7 @@ private val KSClassDeclaration.sizeInBytes: Int
             StruktGenerator.Type.Int -> 4
             StruktGenerator.Type.Long -> 8
             is StruktGenerator.Type.Enum -> 4
+            StruktGenerator.Type.Double -> 8
         }
     }
 
