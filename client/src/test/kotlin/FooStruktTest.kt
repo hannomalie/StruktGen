@@ -4,6 +4,8 @@ import FooStruktImpl.Companion.invoke
 import FooStruktImpl.Companion.sizeInBytes
 import FooStruktImpl.Companion.type
 import NestedImpl.Companion.invoke
+import ReorderedStruktImpl.Companion.invoke
+import ReorderedStruktImpl.Companion.sizeInBytes
 import SimpleImpl.Companion.invoke
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.data.Offset.offset
@@ -87,6 +89,36 @@ class FooStruktTest {
             assertThat(simple.d.a).isEqualTo(0)
             simple.d.a = 3
             assertThat(simple.d.a).isEqualTo(3)
+        }
+    }
+
+    @Test
+    fun `strukt properties can be set correctly through instance when order annotation is used`() {
+
+//        context(ByteBuffer) @Order(0) val a: Int
+//        context(ByteBuffer) @Order(1) var b: Int
+//        context(ByteBuffer) @Order(2) val c: Float
+//        context(ByteBuffer) @Order(3) val d: Nested
+//        context(ByteBuffer) var e: Boolean
+//
+        val simple = ReorderedStrukt()
+        val buffer = ByteBuffer.allocate(ReorderedStrukt.sizeInBytes)
+        buffer.run {
+            simple.a = 5
+            assertThat(simple.a).isEqualTo(5)
+            simple.b = 3
+            assertThat(simple.b).isEqualTo(3)
+            simple.c = 1
+            assertThat(simple.c).isEqualTo(1)
+            simple.d = 1
+            assertThat(simple.d).isEqualTo(1)
+        }
+        buffer.apply {
+            position(0)
+            assertThat(getInt()).isEqualTo(3) // b should be first
+            assertThat(getInt()).isEqualTo(5) // a should be second
+            assertThat(getInt()).isEqualTo(1) // c has no index, should come before last
+            assertThat(getInt()).isEqualTo(1) // d has no index, should come last
         }
     }
 
@@ -212,7 +244,7 @@ class FooStruktTest {
         val typedBuffer: TypedBuffer<FooStrukt> = ByteBuffer.allocate(FooStrukt.sizeInBytes * 1).typed(FooStrukt.type)
 
         typedBuffer.forIndex(0) {
-            assertThat(it.print()).isEqualTo("asd")
+            assertThat(it.print()).isEqualTo("{ a = 0, b = 0, c = 0.0, d = { a = 0, b = 0 }, e = false }")
         }
     }
 }

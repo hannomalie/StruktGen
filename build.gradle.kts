@@ -1,5 +1,6 @@
 plugins {
-    kotlin("jvm") version "1.7.21" apply false
+    kotlin("jvm") version "1.9.10" apply false
+    `maven-publish`
 }
 
 allprojects {

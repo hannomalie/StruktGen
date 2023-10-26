@@ -5,6 +5,7 @@ import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
 import de.hanno.strukt.generate.StruktGenerator.Type.Companion.parse
 import struktgen.api.Strukt
+import java.io.File
 import java.io.IOException
 import java.lang.IllegalStateException
 import java.util.concurrent.atomic.AtomicInteger
@@ -163,9 +164,15 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             override fun setterCallAsString(currentByteOffset: kotlin.Int): String = throw IllegalStateException("This should never get called, remove me later")
 
             fun getCustomInstancesDeclarations(propertyName: String, currentByteOffset: AtomicInteger): String {
-                val propertyDeclarations = declaration.findPropertyDeclarations()
-                val printDeclaration = declaration.generatePrintDeclaration(propertyDeclarations)
+                val unorderedPropertyDeclarations = declaration.findPropertyDeclarations()
+                val printDeclaration = declaration.generatePrintDeclaration(unorderedPropertyDeclarations)
 
+                val propertyDeclarations = declaration.containingFile?.filePath?.let { filePath ->
+                    val fileText = File(filePath).readText()
+                    unorderedPropertyDeclarations.sortedBy { fileText.indexOf(it.simpleName.asString()) }
+                } ?: run {
+                    unorderedPropertyDeclarations
+                }
                 return """|    private val _${propertyName} = object: ${declaration.qualifiedName!!.asString()}, struktgen.api.Strukt {
                     |${propertyDeclarations.toPropertyDeclarations(currentByteOffset)}
                     |$printDeclaration
@@ -260,7 +267,12 @@ private val KSClassDeclaration.sizeInBytes: Int
     }
 
 private fun KSClassDeclaration.findPropertyDeclarations(): List<KSPropertyDeclaration> = if (classKind == ClassKind.INTERFACE) {
-    getDeclaredProperties().toList()
+    // TODO: This is super hacky but when the order of properties is not the same as in source code, we have a problem.
+    // No other way to enforce the order, as it seems. I already asked here https://github.com/google/ksp/issues/250#issuecomment-1781205812
+    getDeclaredProperties().toList().sortedBy {
+        it.annotations.firstOrNull { annotation ->
+            annotation.shortName.asString() == "Order"
+    }?.arguments?.firstOrNull()?.value?.toString()?.toInt() ?: Int.MAX_VALUE }
 } else emptyList()
 
 private fun List<KSPropertyDeclaration>.toPropertyDeclarations(currentByteOffset: AtomicInteger): String {
