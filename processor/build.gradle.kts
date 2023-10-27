@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    `maven-publish`
 }
 
 repositories {
@@ -16,5 +17,13 @@ dependencies {
 tasks.withType(org.jetbrains.kotlin.gradle.dsl.KotlinCompile::class) {
     kotlinOptions {
         freeCompilerArgs = freeCompilerArgs + "-Xcontext-receivers"
+    }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("processor") {
+            from(components["java"])
+        }
     }
 }

@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    `maven-publish`
 }
 
 
@@ -21,3 +22,10 @@ tasks.withType(org.jetbrains.kotlin.gradle.dsl.KotlinCompile::class) {
     }
 }
 
+publishing {
+    publications {
+        create<MavenPublication>("api") {
+            from(components["java"])
+        }
+    }
+}
