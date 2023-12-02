@@ -10,7 +10,7 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation("com.google.devtools.ksp:symbol-processing-api:1.9.10-1.0.13")
+    implementation("com.google.devtools.ksp:symbol-processing-api:1.9.21-1.0.15")
     implementation(project(":api"))
 }
 

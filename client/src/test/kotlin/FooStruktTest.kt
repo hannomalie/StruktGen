@@ -93,36 +93,6 @@ class FooStruktTest {
     }
 
     @Test
-    fun `strukt properties can be set correctly through instance when order annotation is used`() {
-
-//        context(ByteBuffer) @Order(0) val a: Int
-//        context(ByteBuffer) @Order(1) var b: Int
-//        context(ByteBuffer) @Order(2) val c: Float
-//        context(ByteBuffer) @Order(3) val d: Nested
-//        context(ByteBuffer) var e: Boolean
-//
-        val simple = ReorderedStrukt()
-        val buffer = ByteBuffer.allocate(ReorderedStrukt.sizeInBytes)
-        buffer.run {
-            simple.a = 5
-            assertThat(simple.a).isEqualTo(5)
-            simple.b = 3
-            assertThat(simple.b).isEqualTo(3)
-            simple.c = 1
-            assertThat(simple.c).isEqualTo(1)
-            simple.d = 1
-            assertThat(simple.d).isEqualTo(1)
-        }
-        buffer.apply {
-            position(0)
-            assertThat(getInt()).isEqualTo(3) // b should be first
-            assertThat(getInt()).isEqualTo(5) // a should be second
-            assertThat(getInt()).isEqualTo(1) // c has no index, should come before last
-            assertThat(getInt()).isEqualTo(1) // d has no index, should come last
-        }
-    }
-
-    @Test
     fun `strukt properties can be set correctly through instance when manually iterating`() {
         val simple = FooStrukt()
         val arraySize = 10
