@@ -6,8 +6,8 @@ import com.google.devtools.ksp.symbol.*
 import struktgen.api.Strukt
 import java.io.File
 import java.io.IOException
-import java.lang.IllegalStateException
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.IllegalStateException
 
 private val KSClassDeclaration.isStrukt: Boolean
     get() = classKind == ClassKind.INTERFACE && superTypes.any {
@@ -254,6 +254,7 @@ fun KSClassDeclaration.parse(resolver: Resolver): StruktGenerator.Type? = when(q
     kotlin.Int::class.qualifiedName!!.toString() -> StruktGenerator.Type.Int
     kotlin.Float::class.qualifiedName!!.toString() -> StruktGenerator.Type.Float
     kotlin.Long::class.qualifiedName!!.toString() -> StruktGenerator.Type.Long
+    kotlin.Double::class.qualifiedName!!.toString() -> StruktGenerator.Type.Double
     else -> {
         when {
             this.isStrukt -> StruktGenerator.Type.Custom(this, resolver)
@@ -267,12 +268,13 @@ internal fun KSPropertyDeclaration.parseType(resolver: Resolver) = type.resolve(
 
 fun KSClassDeclaration.generatePrintDeclaration(list: List<KSPropertyDeclaration>, resolver: Resolver): String {
     val s = list.joinToString(" + \", \" + ") { ksPropertyDeclaration ->
-        val printCall = ksPropertyDeclaration.parseType(resolver)!!.let { type ->
+        val printCall = ksPropertyDeclaration.parseType(resolver).let { type ->
             when (type) {
                 is StruktGenerator.Type.Custom -> {
                     val qualifiedThis = if (classKind == ClassKind.OBJECT) "" else ksPropertyDeclaration.simpleName.asString()
                     "_$qualifiedThis.print()"
                 }
+                null -> throw IllegalStateException("Resolved null type for property declaration of ${ksPropertyDeclaration.type} in ${ksPropertyDeclaration.containingFile?.filePath}")
                 else -> ksPropertyDeclaration.simpleName.asString() + ".toString()"
             }
         }
