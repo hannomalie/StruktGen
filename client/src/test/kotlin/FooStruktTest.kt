@@ -213,7 +213,7 @@ class FooStruktTest {
         val typedBuffer: TypedBuffer<FooStrukt> = ByteBuffer.allocate(FooStrukt.sizeInBytes * 1).typed(FooStrukt.type)
 
         typedBuffer.forIndex(0) {
-            assertThat(it.print()).isEqualTo("asd")
+            assertThat(it.print()).isEqualTo("{ a = 0, b = 0, c = 0.0, d = { a = 0, b = 0 }, e = false }")
         }
     }
 }

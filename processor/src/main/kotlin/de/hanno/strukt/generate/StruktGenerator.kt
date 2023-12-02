@@ -1,9 +1,8 @@
 package de.hanno.strukt.generate
 
-import com.google.devtools.ksp.getDeclaredProperties
+import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
-import de.hanno.strukt.generate.StruktGenerator.Type.Companion.parse
 import struktgen.api.Strukt
 import java.io.IOException
 import java.lang.IllegalStateException
@@ -39,6 +38,8 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
         if (invoked) {
             return emptyList()
         }
+
+        visitor.resolver = resolver
 
         resolver.getAllFiles().toList().map {
             it.accept(visitor, Unit)
@@ -105,9 +106,9 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             val nonEmptyPackageName = nonEmptyPackageName(classDeclaration)
 
             val byteSizeCounter = AtomicInteger()
-            val propertyDeclarationsString = propertyDeclarations.toPropertyDeclarations(byteSizeCounter)
+            val propertyDeclarationsString = propertyDeclarations.toPropertyDeclarations(byteSizeCounter, resolver)
 
-            val printDeclaration = classDeclaration.generatePrintDeclaration(propertyDeclarations)
+            val printDeclaration = classDeclaration.generatePrintDeclaration(propertyDeclarations, resolver)
 
             // TODO: Check why the hell files are tried to be written multiple times instead of this nasty hack
             if(codeGenerator.generatedFile.toList().none { it.nameWithoutExtension == implClassName }) {
@@ -205,16 +206,19 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             override fun getterCallAsString(currentByteOffset: kotlin.Int): String = "${declaration.qualifiedName!!.asString()}.values()[getInt(position() + $currentByteOffset)]"
             override fun setterCallAsString(currentByteOffset: kotlin.Int): String = "putInt(position() + $currentByteOffset, value.ordinal)"
         }
-        class Custom(val declaration: KSClassDeclaration): Type(declaration.qualifiedName!!.asString()) {
+        class Custom(val declaration: KSClassDeclaration, internal val resolver: Resolver): Type(declaration.qualifiedName!!.asString()) {
             override fun getterCallAsString(currentByteOffset: kotlin.Int): String = throw IllegalStateException("This should never get called, remove me later")
             override fun setterCallAsString(currentByteOffset: kotlin.Int): String = throw IllegalStateException("This should never get called, remove me later")
 
-            fun getCustomInstancesDeclarations(propertyName: String, currentByteOffset: AtomicInteger): String {
-                val propertyDeclarations = declaration.findPropertyDeclarations()
-                val printDeclaration = declaration.generatePrintDeclaration(propertyDeclarations)
+            fun getCustomInstancesDeclarations(propertyName: String, currentByteOffset: AtomicInteger, resolver: Resolver): String {
+                val propertyDeclarations = declaration.findPropertyDeclarations(resolver)
+                val printDeclaration = declaration.generatePrintDeclaration(
+                    propertyDeclarations,
+                    resolver
+                )
 
                 return """|    private val _${propertyName} = object: ${declaration.qualifiedName!!.asString()}, struktgen.api.Strukt {
-                    |${propertyDeclarations.toPropertyDeclarations(currentByteOffset)}
+                    |${propertyDeclarations.toPropertyDeclarations(currentByteOffset, resolver)}
                     |$printDeclaration
                     |    }"""
             }
@@ -222,7 +226,7 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             override fun propertyDeclarationAsString(isMutable: kotlin.Boolean, propertyName: String, currentByteOffset: AtomicInteger): String {
                 if(isMutable) throw IllegalStateException("var properties are not allowed for nested properties, as they don't make sense")
                 return """|
-                    |    ${getCustomInstancesDeclarations(propertyName, currentByteOffset)}
+                    |    ${getCustomInstancesDeclarations(propertyName, currentByteOffset, resolver)}
                     |    context(java.nio.ByteBuffer) override val $propertyName: $fqName get() { return _${propertyName} }
                     |""".trimMargin()
             }
@@ -230,30 +234,14 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
             private val implClassHeader get() = """$implClassName: ${declaration.qualifiedName!!.asString()}"""
             private val implClassName get() = """${declaration.simpleName.asString()}Impl"""
         }
-        companion object {
-            fun KSDeclaration.parse(): Type? = if(this is KSClassDeclaration) parse() else null
-
-            fun KSClassDeclaration.parse(): Type? = when(qualifiedName!!.asString()) {
-                kotlin.Boolean::class.qualifiedName!!.toString() -> Boolean
-                kotlin.Int::class.qualifiedName!!.toString() -> Int
-                kotlin.Float::class.qualifiedName!!.toString() -> Float
-                kotlin.Long::class.qualifiedName!!.toString() -> Long
-                else -> {
-                    when {
-                        this.isStrukt -> Custom(this)
-                        this.classKind == ClassKind.ENUM_CLASS -> Enum(this)
-                        else -> null
-                    }
-                }
-            }
-        }
     }
 
     inner class FindPropertiesVisitor : KSVisitorVoid() {
+        internal lateinit var resolver: Resolver
 
         override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
             if(classDeclaration.isStrukt) {
-                propertyDeclarationsPerClass[classDeclaration] = classDeclaration.findPropertyDeclarations()
+                propertyDeclarationsPerClass[classDeclaration] = classDeclaration.findPropertyDeclarations(resolver)
             }
         }
 
@@ -263,9 +251,67 @@ class StruktGenerator(val logger: KSPLogger, val codeGenerator: CodeGenerator) :
     }
 }
 
-fun KSClassDeclaration.generatePrintDeclaration(list: List<KSPropertyDeclaration>): String {
+internal fun StruktGenerator.Type.getSizeInBytes(resolver: Resolver): Int {
+    return when (this) {
+        StruktGenerator.Type.Boolean -> 4
+        is StruktGenerator.Type.Custom -> declaration.getAllProperties()
+            .sumOf { it.parse(resolver)?.getSizeInBytes(resolver) ?: 0 }
+
+        StruktGenerator.Type.Float -> 4
+        StruktGenerator.Type.Int -> 4
+        StruktGenerator.Type.Long -> 8
+        is StruktGenerator.Type.Enum -> 4
+    }
+}
+internal fun KSClassDeclaration.getSizeInBytes(resolver: Resolver): Int {
+    val type = parse(resolver) ?: return 0
+
+    return when (type) {
+        StruktGenerator.Type.Boolean -> 4
+        is StruktGenerator.Type.Custom -> type.declaration.getAllProperties()
+            .sumBy { it.parse(resolver)?.getSizeInBytes(resolver) ?: 0 }
+
+        StruktGenerator.Type.Float -> 4
+        StruktGenerator.Type.Int -> 4
+        StruktGenerator.Type.Long -> 8
+        is StruktGenerator.Type.Enum -> 4
+    }
+}
+
+internal fun List<KSPropertyDeclaration>.toPropertyDeclarations(currentByteOffset: AtomicInteger, resolver:Resolver): String {
+
+    return joinToString("\n") { declaration ->
+        val type = declaration.parseType(resolver)
+
+        type?.let { type ->
+            "\t" + type.propertyDeclarationAsString(declaration.isMutable, declaration.simpleName.asString(), currentByteOffset).apply {
+                currentByteOffset.getAndAdd(type.getSizeInBytes(resolver))
+            }
+        } ?: ""
+    }
+}
+
+fun KSDeclaration.parse(resolver: Resolver): StruktGenerator.Type? = if(this is KSClassDeclaration) parse(resolver) else null
+
+fun KSClassDeclaration.parse(resolver: Resolver): StruktGenerator.Type? = when(qualifiedName!!.asString()) {
+    kotlin.Boolean::class.qualifiedName!!.toString() -> StruktGenerator.Type.Boolean
+    kotlin.Int::class.qualifiedName!!.toString() -> StruktGenerator.Type.Int
+    kotlin.Float::class.qualifiedName!!.toString() -> StruktGenerator.Type.Float
+    kotlin.Long::class.qualifiedName!!.toString() -> StruktGenerator.Type.Long
+    else -> {
+        when {
+            this.isStrukt -> StruktGenerator.Type.Custom(this, resolver)
+            this.classKind == ClassKind.ENUM_CLASS -> StruktGenerator.Type.Enum(this)
+            else -> null
+        }
+    }
+}
+
+internal fun KSPropertyDeclaration.parseType(resolver: Resolver) = type.resolve().declaration.parse(resolver)
+
+fun KSClassDeclaration.generatePrintDeclaration(list: List<KSPropertyDeclaration>, resolver: Resolver): String {
     val s = list.joinToString(" + \", \" + ") { ksPropertyDeclaration ->
-        val printCall = ksPropertyDeclaration.parseType()!!.let { type ->
+        val printCall = ksPropertyDeclaration.parseType(resolver)!!.let { type ->
             when (type) {
                 is StruktGenerator.Type.Custom -> {
                     val qualifiedThis = if (classKind == ClassKind.OBJECT) "" else ksPropertyDeclaration.simpleName.asString()
@@ -278,46 +324,7 @@ fun KSClassDeclaration.generatePrintDeclaration(list: List<KSPropertyDeclaration
     }
     return """     context(java.nio.ByteBuffer) override fun print() = "{ "+$s+" }" """
 }
-private val StruktGenerator.Type.sizeInBytes: Int
-    get() {
-        return when(this) {
-            StruktGenerator.Type.Boolean -> 4
-            is StruktGenerator.Type.Custom -> declaration.getAllProperties().sumBy { it.parse()?.sizeInBytes ?: 0 }
-            StruktGenerator.Type.Float -> 4
-            StruktGenerator.Type.Int -> 4
-            StruktGenerator.Type.Long -> 8
-            is StruktGenerator.Type.Enum -> 4
-        }
-    }
-private val KSClassDeclaration.sizeInBytes: Int
-    get() {
-        val type = parse() ?: return 0
-
-        return when(type) {
-            StruktGenerator.Type.Boolean -> 4
-            is StruktGenerator.Type.Custom -> type.declaration.getAllProperties().sumBy { it.parse()?.sizeInBytes ?: 0 }
-            StruktGenerator.Type.Float -> 4
-            StruktGenerator.Type.Int -> 4
-            StruktGenerator.Type.Long -> 8
-            is StruktGenerator.Type.Enum -> 4
-        }
-    }
-
-private fun KSClassDeclaration.findPropertyDeclarations(): List<KSPropertyDeclaration> = if (classKind == ClassKind.INTERFACE) {
-    getDeclaredProperties().toList()
+@OptIn(KspExperimental::class)
+internal fun KSClassDeclaration.findPropertyDeclarations(resolver: Resolver): List<KSPropertyDeclaration> = if (classKind == ClassKind.INTERFACE) {
+    resolver.getDeclarationsInSourceOrder(this).filterIsInstance<KSPropertyDeclaration>().toList()
 } else emptyList()
-
-private fun List<KSPropertyDeclaration>.toPropertyDeclarations(currentByteOffset: AtomicInteger): String {
-
-    return joinToString("\n") { declaration ->
-        val type = declaration.parseType()
-
-        type?.let { type ->
-            "\t" + type.propertyDeclarationAsString(declaration.isMutable, declaration.simpleName.asString(), currentByteOffset).apply {
-                currentByteOffset.getAndAdd(type.sizeInBytes)
-            }
-        } ?: ""
-    }
-}
-
-private fun KSPropertyDeclaration.parseType() = type.resolve().declaration.parse()
